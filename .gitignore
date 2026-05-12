@@ -1,0 +1,9 @@
+credentials.json
+state/token.json
+state/page_token.json
+state/changes.log
+.env
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store

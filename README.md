@@ -1,3 +1,163 @@
 # Track-Agent
 
 An agent that tracks changes made in google drive.
+
+========================================
+ Track-Agent — Local Setup Guide
+========================================
+
+Track-Agent watches your Google Drive for file changes (create, update, delete),
+analyzes each file with a local AI model, and stores everything in a MySQL database.
+
+----------------------------------------
+ REQUIREMENTS
+----------------------------------------
+- Python 3.12 or later
+- MySQL 8.0 or later (running locally)
+- Ollama (local AI model runner)
+- A Google account
+
+
+----------------------------------------
+ STEP 1 — Install Ollama
+----------------------------------------
+1. Install Ollama:
+     brew install ollama
+
+2. Start Ollama in a terminal (keep it running):
+     ollama serve
+
+3. In a separate terminal, pull the AI model:
+     ollama pull deepseek-r1:1.5b
+
+   Note: requires ~2GB RAM. If you have 8GB+ free, use the better model:
+     ollama pull deepseek-r1:7b
+   Then set OLLAMA_MODEL=deepseek-r1:7b in your .env (see Step 4).
+
+
+----------------------------------------
+ STEP 2 — Set up Google Drive API
+----------------------------------------
+1. Go to https://console.cloud.google.com
+2. Create a new project (or select an existing one)
+3. Go to APIs & Services > Library
+   Search for "Google Drive API" and click Enable
+4. Go to APIs & Services > Credentials
+   Click "+ Create Credentials" > "OAuth client ID"
+   - If prompted to configure consent screen: choose External,
+     fill in your app name and email, save
+   - Application type: Desktop app
+   - Name it anything (e.g. Track-Agent)
+   - Click Create
+5. Download the JSON file that appears
+6. Rename it to "credentials.json" and place it in this folder:
+     Track-Agent/credentials.json
+
+
+----------------------------------------
+ STEP 3 — Set up MySQL
+----------------------------------------
+1. Make sure MySQL is running on your machine
+2. Create the database (the agent will create the table automatically):
+     mysql -u root -p -e "CREATE DATABASE track_agent;"
+3. Note your MySQL username and password for Step 4
+
+
+----------------------------------------
+ STEP 4 — Configure the agent
+----------------------------------------
+1. Copy the example env file:
+     cp .env.example .env
+
+2. Open .env and fill in your values:
+
+     # AI model (must match what you pulled in Step 1)
+     OLLAMA_MODEL=deepseek-r1:1.5b
+     OLLAMA_HOST=http://localhost:11434
+
+     # How often to check for changes (seconds)
+     POLL_INTERVAL_SECONDS=60
+
+     # Optional: only watch one folder (leave blank to watch all of Drive)
+     # Get the folder ID from the Drive URL:
+     # https://drive.google.com/drive/folders/<FOLDER_ID>
+     WATCH_FOLDER_ID=
+
+     # MySQL connection
+     MYSQL_HOST=localhost
+     MYSQL_PORT=3306
+     MYSQL_USER=root
+     MYSQL_PASSWORD=your_mysql_password
+     MYSQL_DATABASE=track_agent
+
+
+----------------------------------------
+ STEP 5 — Install Python dependencies
+----------------------------------------
+Run in the Track-Agent folder:
+
+     python3 -m pip install -r requirements.txt
+
+
+----------------------------------------
+ STEP 6 — Run the agent
+----------------------------------------
+     python3 main.py
+
+On the first run:
+- A browser window will open asking you to sign in to Google
+- Approve Drive read access
+- The agent saves your token to state/token.json for future runs
+
+On every run after that, the agent starts polling immediately.
+Press Ctrl-C to stop.
+
+Example output:
+     Starting Google Drive agent...
+     Polling every 60s — watching: entire Drive
+
+     Detected 1 new change(s).
+       [CREATED] August 4th Notes.pdf
+       [2026-05-12T21:31:07] [CREATED] August 4th Notes.pdf: This file contains physics lecture notes...
+
+     Detected 1 new change(s).
+       [DELETED] old-notes.pdf
+
+
+----------------------------------------
+ STEP 7 — View stored records
+----------------------------------------
+To see all detected changes with full AI summaries:
+
+     python3 check_db.py
+
+To query directly in MySQL:
+
+     mysql -u root -p track_agent
+     SELECT id, current_file, operation, detected_at FROM drive_changes ORDER BY detected_at DESC;
+
+
+----------------------------------------
+ CRUD DETECTION
+----------------------------------------
+The agent detects three types of changes:
+
+  [CREATED]  — file appeared for the first time
+  [UPDATED]  — file was modified
+  [DELETED]  — file was moved to Trash or permanently deleted
+
+Note: Google Drive does not report when files are opened (Read events
+are not available through the Drive Changes API).
+
+
+----------------------------------------
+ NOTES
+----------------------------------------
+- credentials.json and state/ are excluded from git (.gitignore)
+- Page token is stored in state/page_token.json
+  Delete this file to reset the change baseline (agent will re-scan from now)
+- Change log is written to state/changes.log (NDJSON format)
+- The agent deduplicates changes automatically — the same file change
+  will only be analyzed and stored once
+========================================
+
